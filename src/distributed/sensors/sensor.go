@@ -36,15 +36,14 @@ func main() {
 	defer ch.Close()
 
 	dataQueue := qutils.GetQueue(*name, ch)
-	sensorQueue := qutils.GetQueue(qutils.SensorListQueue, ch)
 
 	msg := amqp.Publishing{Body: []byte(*name)}
 	ch.Publish(
-		"",               //exchange string,
-		sensorQueue.Name, //key string,
-		false,            //mandatory bool,
-		false,            //immediate bool,
-		msg)              //msg amqp.Publishing)
+		"amq.fanout", //exchange string,
+		"",           //key string,
+		false,        //mandatory bool,
+		false,        //immediate bool,
+		msg)          //msg amqp.Publishing)
 
 	dur, _ := time.ParseDuration(strconv.Itoa(1000/int(*freq)) + "ms")
 
@@ -61,6 +60,7 @@ func main() {
 		}
 
 		buff.Reset()
+		enc = gob.NewEncoder(buff)
 		enc.Encode(reading)
 
 		msg := amqp.Publishing{

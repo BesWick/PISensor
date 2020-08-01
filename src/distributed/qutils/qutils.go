@@ -9,7 +9,7 @@ import (
 
 const SensorListQueue = "SensorList"
 
-//GetChannel gets references to Channel and Connection
+//GetChannel gets references to Channel and Connection from RabbitMQ URL
 func GetChannel(url string) (*amqp.Connection, *amqp.Channel) {
 	conn, err := amqp.Dial(url)
 	failonError(err, "failed to connect to rabbitMQ")
@@ -19,7 +19,7 @@ func GetChannel(url string) (*amqp.Connection, *amqp.Channel) {
 	return conn, ch
 }
 
-//GetQueue declares a queue
+//GetQueue returns reference to a new queue in a channel
 func GetQueue(name string, ch *amqp.Channel) *amqp.Queue {
 	q, err := ch.QueueDeclare(name, false, false, false, false, nil)
 	failonError(err, "Failed to declare a queue")
