@@ -1,16 +1,20 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
 	"flag"
 	"log"
 	"math/rand"
 	"strconv"
 	"time"
-	"encoding/gob"
-	"distributed/dto"
-	"bytes"
 
+	"github.com/BesWick/PISensor/src/distributed/dto"
+	"github.com/BesWick/PISensor/src/distributed/qutils"
+	"github.com/streadway/amqp"
 )
+
+var url = "amqp://guest:guest@localhost:5672"
 
 var name = flag.String("name", "sensor", "name of sensor")
 var freq = flag.Uint("freq", 5, "update frequency in cycles/sec")
@@ -26,17 +30,50 @@ var nom = (*max-*min)/2 + *min
 func main() {
 	flag.Parse()
 
+	conn, ch := qutils.GetChannel(url)
+
+	defer conn.Close()
+	defer ch.Close()
+
+	dataQueue := qutils.GetQueue(*name, ch)
+	sensorQueue := qutils.GetQueue(qutils.SensorListQueue, ch)
+
+	msg := amqp.Publishing{Body: []byte(*name)}
+	ch.Publish(
+		"",               //exchange string,
+		sensorQueue.Name, //key string,
+		false,            //mandatory bool,
+		false,            //immediate bool,
+		msg)              //msg amqp.Publishing)
+
 	dur, _ := time.ParseDuration(strconv.Itoa(1000/int(*freq)) + "ms")
 
 	signal := time.Tick(dur)
 
+	buff := new(bytes.Buffer)
+	enc := gob.NewEncoder(buff)
 	for range signal {
 		calcValue()
-		reading:= dto.SensorMessage{
-			Name: *name,
-			Value: value
+		reading := dto.SensorMessage{
+			Name:      *name,
+			Value:     value,
 			TimeStamp: time.Now(),
 		}
+
+		buff.Reset()
+		enc.Encode(reading)
+
+		msg := amqp.Publishing{
+			Body: buff.Bytes(),
+		}
+
+		ch.Publish(
+			"",             //exchange string,
+			dataQueue.Name, //key string,
+			false,          //mandatory bool,
+			false,          //immediate bool,
+			msg)            //msg amqp.Publishing)
+
 		log.Printf("Reading send, Value: %v", value)
 	}
 }
