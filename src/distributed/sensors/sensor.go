@@ -36,14 +36,19 @@ func main() {
 	defer ch.Close()
 
 	dataQueue := qutils.GetQueue(*name, ch)
+	publishQueueName(ch)
 
-	msg := amqp.Publishing{Body: []byte(*name)}
-	ch.Publish(
-		"amq.fanout", //exchange string,
-		"",           //key string,
-		false,        //mandatory bool,
-		false,        //immediate bool,
-		msg)          //msg amqp.Publishing)
+	//setup for DiscoverSensor() Requests
+	discoveryQueue := qutils.GetQueue("", ch)
+	ch.QueueBind(
+		discoveryQueue.Name,
+		"",
+		qutils.SensorDiscoveryExchange,
+		false,
+		nil,
+	)
+
+	go listenForDiscoveryRequests(discoveryQueue.Name, ch)
 
 	dur, _ := time.ParseDuration(strconv.Itoa(1000/int(*freq)) + "ms")
 
@@ -90,4 +95,31 @@ func calcValue() {
 	}
 
 	value += r.Float64()*(maxStep-minStep) + minStep
+}
+
+//publishQueueName
+func publishQueueName(ch *amqp.Channel) {
+	msg := amqp.Publishing{Body: []byte(*name)}
+	ch.Publish(
+		"amq.fanout", //exchange string,
+		"",           //key string,
+		false,        //mandatory bool,
+		false,        //immediate bool,
+		msg)          //msg amqp.Publishing)
+
+}
+
+func listenForDiscoveryRequests(name string, ch *amqp.Channel) {
+	msgs, _ := ch.Consume(
+		name,
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	for range msgs {
+		publishQueueName(ch)
+	}
 }

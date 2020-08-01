@@ -8,6 +8,7 @@ import (
 )
 
 const SensorListQueue = "SensorList"
+const SensorDiscoveryExchange = "SensorDiscovery" //name of fanout exchange for sensors discovery
 
 //GetChannel gets references to Channel and Connection from RabbitMQ URL
 func GetChannel(url string) (*amqp.Connection, *amqp.Channel) {

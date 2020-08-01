@@ -19,12 +19,14 @@ type QueueListener struct {
 	ch   *amqp.Channel
 	//registry of all sources coordinator is listening on
 	sources map[string]<-chan amqp.Delivery //key=queue's Name //val = recieve only channel
+	ea      *EventAggregator
 }
 
 //NewQueueListener initializes a new QueueListener Obj
 func NewQueueListener() *QueueListener {
 	ql := QueueListener{
 		sources: make(map[string]<-chan amqp.Delivery),
+		ea:      NewEventAggregator(),
 	}
 	ql.conn, ql.ch = qutils.GetChannel(url)
 
@@ -40,6 +42,9 @@ func (ql *QueueListener) ListenForNewSource() {
 
 	msgs, _ := ql.ch.Consume(q.Name, "", true, false, false, false, nil)
 
+	ql.DiscoverSensors()
+
+	fmt.Println("listening for new sources")
 	for msg := range msgs {
 		//new sensor coming online
 		sourceChan, _ := ql.ch.Consume(
@@ -61,12 +66,42 @@ func (ql *QueueListener) ListenForNewSource() {
 
 //AddListener adds a queuelistener to read sensor data
 func (ql *QueueListener) AddListener(msgs <-chan amqp.Delivery) {
+	//looping through sensor data
 	for msg := range msgs {
-		r := bytes.NewReader(msg.Body)
-		d := gob.NewDecoder(r)
+		reader := bytes.NewReader(msg.Body)
+		decoder := gob.NewDecoder(reader)
 		sd := new(dto.SensorMessage)
-		d.Decode(sd)
+		decoder.Decode(sd)
+
+		ed := EventData{
+			Name:      sd.Name,
+			TimeStamp: sd.TimeStamp,
+			Value:     sd.Value,
+		}
+		ql.ea.PublishEvent("MessageReceived_"+msg.RoutingKey, ed)
 
 		fmt.Printf("Recieved message: %v\n", sd)
 	}
+}
+
+//DiscoverSensors trys to discover any new sensors in the system
+func (ql *QueueListener) DiscoverSensors() {
+	ql.ch.ExchangeDeclare(
+		qutils.SensorDiscoveryExchange,
+		"fanout",
+		false,
+		false,
+		false,
+		false,
+		nil)
+
+	//empty publish to signal sensors to renounce themselves
+	ql.ch.Publish(
+		qutils.SensorDiscoveryExchange,
+		"",
+		false,
+		false,
+		amqp.Publishing{},
+	)
+
 }
